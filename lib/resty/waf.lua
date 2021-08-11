@@ -30,7 +30,7 @@ local mt = { __index = _M }
 
 _M.version = base.version
 
--- default list of rulesets
+-- 内置规则集, 按顺序加载
 local _global_rulesets = {
 	"11000_whitelist",
 	"20000_http_violation",
@@ -134,6 +134,7 @@ local function _log_event(self, rule, value, ctx)
 	ctx.log_entries[ctx.log_entries_n] = t
 end
 
+-- 设置 ID 标记
 local function _transaction_id_header(self, ctx)
 	-- upstream request header
 	if self._req_tid_header then
@@ -176,7 +177,9 @@ local function _rule_action(self, action, ctx, collections)
 	end
 
 	if util.table_has_key(action, actions.alter_actions) then
+		-- 标记为已执行
 		ctx.altered = true
+		-- 设置请求 ID
 		_finalize(self, ctx)
 	end
 
@@ -359,6 +362,7 @@ end
 local function _calculate_offset(ruleset)
 	for phase, i in pairs(phase_t.phases) do
 		if ruleset[phase] then
+			-- 规则预计算
 			calc.calculate(ruleset[phase], _M._meta_exception)
 		else
 			ruleset[phase] = {}
@@ -425,7 +429,7 @@ local function _merge_rulesets(self)
 	self._active_rulesets = t
 end
 
--- main entry point
+-- WAF 执行
 function _M.exec(self, opts)
 	if self._mode == "INACTIVE" then
 		--_LOG_"Operational mode is INACTIVE, not running"
@@ -434,12 +438,14 @@ function _M.exec(self, opts)
 
 	opts = opts or {}
 
+	-- 获取 Nginx 执行阶段
 	local phase = opts.phase or ngx.get_phase()
 
 	if not phase_t.is_valid_phase(phase) then
 		logger.fatal_fail("lua-resty-waf should not be run in phase " .. phase)
 	end
 
+	-- 获取 Nginx 请求上下文
 	local ctx         = ngx.ctx.lua_resty_waf or tab_new(0, 20)
 	local collections = ctx.collections or tab_new(0, 41)
 
@@ -459,6 +465,7 @@ function _M.exec(self, opts)
 	ctx.storage["TX"]    = ctx.storage["TX"] or {}
 	ctx.col_lookup["TX"] = "TX"
 
+	-- 如果请求已经执行了 DENY 或 DROP 操作，直接返回, 因为 OpenResty 在 header_filter 阶段下可能多次执行
 	-- see https://groups.google.com/forum/#!topic/openresty-en/LVR9CjRT5-Y
 	-- also https://github.com/p0pr0ck5/lua-resty-waf/issues/229
 	if ctx.altered == true and self._mode == 'ACTIVE' then
@@ -473,10 +480,12 @@ function _M.exec(self, opts)
 
 	-- populate the collections table
 	if opts.collections then
+		-- 复制
 		for k, v in pairs(opts.collections) do
 			collections[k] = v
 		end
 	else
+		-- 绑定 Nginx 变量到 Lua table
 		collections_t.lookup[phase](self, collections, ctx)
 	end
 
@@ -484,6 +493,7 @@ function _M.exec(self, opts)
 	-- (e.g. multiple chunks are going through body_filter)
 	if ctx.short_circuit then return end
 
+	-- 动态解析变量
 	for i = 1, self.var_count do
 		local data  = self.var[i]
 		local value = util.parse_dynamic_value(self, data.value, collections)
@@ -568,6 +578,7 @@ function _M.exec(self, opts)
 end
 
 -- instantiate a new instance of the module
+-- 创建新实例, 在 OpenResty 每个阶段中执行
 function _M.new()
 	local ctx = ngx.ctx.lua_resty_waf or tab_new(0, 21)
 
@@ -584,7 +595,7 @@ function _M.new()
 		_allowed_content_types       = {},
 		_debug                       = false,
 		_debug_log_level             = ngx_INFO,
-		_deny_status                 = ngx_HTTP_FORBIDDEN,
+		_deny_status                 = ngx_HTTP_FORBIDDEN, -- 拦截返回的状态码
 		_event_log_altered_only      = true,
 		_event_log_buffer_size       = 4096,
 		_event_log_level             = ngx_INFO,
@@ -596,7 +607,7 @@ function _M.new()
 		_event_log_ssl               = false,
 		_event_log_ssl_sni_host      = nil,
 		_event_log_ssl_verify        = false,
-		_event_log_socket_proto      = 'udp',
+		_event_log_socket_proto      = 'udp', -- 通过 UDP 发送审计日志
 		_event_log_target            = 'error',
 		_event_log_target_host       = nil,
 		_event_log_target_path       = nil,
@@ -605,16 +616,16 @@ function _M.new()
 		_hook_actions                = {},
 		_ignore_rule                 = {},
 		_ignore_ruleset              = {},
-		_mode                        = 'SIMULATE',
+		_mode                        = 'SIMULATE', -- 默认是模拟模式, 只会打印日志
 		_nameservers                 = {},
 		_pcre_flags                  = 'oij',
 		_process_multipart_body      = true,
 		_req_tid_header              = false,
-		_res_body_max_size           = (1024 * 1024),
+		_res_body_max_size           = (1024 * 1024), -- 解析 Body 的阈值, 超过这个值不会解析
 		_res_body_mime_types         = { ["text/plain"] = true, ["text/html"] = true },
 		_res_tid_header              = false,
 		_score_threshold             = 5,
-		_storage_backend             = 'dict',
+		_storage_backend             = 'dict', -- 储存共享变量的后端, 支持 dict, redis
 		_storage_keepalive           = true,
 		_storage_keepalive_pool_size = 100,
 		_storage_keepalive_timeout   = 10000,
@@ -666,6 +677,7 @@ function _M.set_option(self, option, value, data)
 end
 
 -- init_by_lua handler precomputations
+-- 初始化, 加载默认规则集
 function _M.init()
 	-- do offset jump calculations for default rulesets
 	-- this is also lazily handled in exec() for rulesets
@@ -673,13 +685,16 @@ function _M.init()
 	for _, ruleset in ipairs(_global_rulesets) do
 		local rs, err, calc
 
+		-- 从文件系统加载解析规则集 (.json)
 		rs, err = util.load_ruleset_file(ruleset)
 
 		if err then
 			ngx.log(ngx.ERR, err)
 		else
+
 			_calculate_offset(rs)
 
+			-- 全局规则表
 			_ruleset_defs[ruleset] = rs
 			_ruleset_def_cnt = _ruleset_def_cnt + 1
 
@@ -689,6 +704,7 @@ function _M.init()
 end
 
 -- translate and add a SecRule files to ruleset defs
+-- 加载 ModSecurity SecRule 规则 & 翻译规则
 function _M.load_secrules(ruleset, opts, err_tab)
 	local rules_tab = {}
 	local rules_cnt = 0

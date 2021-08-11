@@ -7,6 +7,7 @@ local util    = require "resty.waf.util"
 
 _M.version = base.version
 
+-- 数据操作类型, 区别于 ACCEPT, CHAIN, IGNORE
 _M.alter_actions = {
 	DENY   = true,
 	DROP   = true,
@@ -16,6 +17,7 @@ _M.disruptive_lookup = {
 	ACCEPT = function(waf, ctx)
 		--_LOG_"Rule action was ACCEPT, so ending this phase with ngx.OK"
 		if waf._mode == "ACTIVE" then
+			-- TODO 允许操作仍然返回后端状态码
 			ngx.exit(ngx.OK)
 		end
 	end,
@@ -37,6 +39,7 @@ _M.disruptive_lookup = {
 	IGNORE = function(waf)
 		--_LOG_"Ignoring rule for now"
 	end,
+	-- SCORE 类型废弃，使用 TX 设置危险分数
 	SCORE = function(waf, ctx)
 		--_LOG_"Score isn't a thing anymore, see TX.anomaly_score"
 	end,

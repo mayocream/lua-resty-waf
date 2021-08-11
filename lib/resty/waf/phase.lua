@@ -5,6 +5,7 @@ local util = require "resty.waf.util"
 
 _M.version = base.version
 
+-- 规则在 OpenResty 的执行阶段
 _M.phases = { access = 1, header_filter = 2, body_filter = 3, log = 4 }
 
 function _M.is_valid_phase(phase)

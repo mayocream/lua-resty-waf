@@ -11,6 +11,7 @@ local table_concat  = table.concat
 
 _M.version = base.version
 
+-- 规则解析, 数据绑定, TODO 只加载必要的数据
 _M.lookup = {
 	access = function(waf, collections, ctx)
 		local request_headers     = ngx.req.get_headers()
@@ -47,7 +48,7 @@ _M.lookup = {
 		collections.NGX_VAR           = ngx.var
 		collections.MATCHED_VARS      = {}
 		collections.MATCHED_VAR_NAMES = {}
-		collections.SCORE_THRESHOLD   = waf._score_threshold
+		collections.SCORE_THRESHOLD   = waf._score_threshold -- 危险阈值
 
 		collections.ARGS_COMBINED_SIZE = query_str_size + body_size
 

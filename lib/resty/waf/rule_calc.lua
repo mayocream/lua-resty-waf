@@ -7,6 +7,7 @@ local table_insert = table.insert
 
 _M.version = base.version
 
+-- 生成 transform 的 KEY
 local function _transform_collection_key(transform)
 	if not transform then
 		return nil
@@ -29,8 +30,10 @@ local function _ignore_collection_key(ignore)
 	return table_concat(t, ',')
 end
 
+-- 计算规则主键 (KEY)
 local function _build_collection_key(var, transform)
 	local key = {}
+	-- TYPE 为规则查询的变量名
 	key[1] = tostring(var.type)
 
 	if var.parse ~= nil then
@@ -84,8 +87,10 @@ local function _write_skip_offset(rule, max, cur_offset)
 	end
 end
 
+-- 规则集编排
 function _M.calculate(ruleset, meta_lookup)
 	local max = #ruleset
+	-- 储存规则条目
 	local chain = {}
 
 	for i = 1, max do
@@ -97,10 +102,13 @@ function _M.calculate(ruleset, meta_lookup)
 
 		for i in ipairs(rule.vars) do
 			local var = rule.vars[i]
+			-- 计算规则主键
 			var.collection_key = _build_collection_key(var, rule.opts.transform)
 		end
 
+		-- 计算 offset match
 		if rule.actions.disrupt ~= "CHAIN" then
+			-- ???
 			_write_chain_offsets(chain, max, i - #chain)
 
 			if rule.skip then
@@ -126,7 +134,7 @@ function _M.calculate(ruleset, meta_lookup)
 			chain = {}
 		end
 
-		-- meta table lookups for exceptions
+		-- 根据 tags, msg 过滤
 		if meta_lookup then
 			if rule.msg then
 				local msg = rule.msg
