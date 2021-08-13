@@ -1,3 +1,4 @@
+-- 规则编排
 local _M = {}
 
 local base = require "resty.waf.base"
@@ -51,22 +52,28 @@ local function _build_collection_key(var, transform)
 end
 _M.build_collection_key = _build_collection_key
 
+-- 添加链规则 offset 
+-- 接收参数  [规则链, 总规则数, 规则链起始 index]
 local function _write_chain_offsets(chain, max, cur_offset)
+	-- 规则链长度
 	local chain_length = #chain
+	-- 倒叙遍历 index
 	local offset = chain_length
 
+	-- 遍历规则
 	for i = 1, chain_length do
 		local rule = chain[i]
 
-		if offset + cur_offset >= max then
-			rule.offset_nomatch = nil
+		-- 当前 chain 是否在最末尾
+		if offset + cur_offset >= max then -- TODO 这个表达式可以简化
+			rule.offset_nomatch = nil -- 默认, 没有下一条规则链了
 			if rule.actions.disrupt == "CHAIN" then
-				rule.offset_match = 1
+				rule.offset_match = 1 -- 下次执行增加 1
 			else
-				rule.offset_match = nil
+				rule.offset_match = nil -- 没有下一条规则链了
 			end
 		else
-			rule.offset_nomatch = offset
+			rule.offset_nomatch = offset -- 跳过当前的剩余规则, 执行下一组规则
 			rule.offset_match = 1
 		end
 
@@ -89,29 +96,37 @@ end
 
 -- 规则集编排
 function _M.calculate(ruleset, meta_lookup)
+	-- 规则条目数
 	local max = #ruleset
-	-- 储存规则条目
+	-- 储存一条规则链
 	local chain = {}
 
+	-- 遍历规则集
 	for i = 1, max do
+		-- 单条规则
 		local rule = ruleset[i]
 
+		-- 是否有单独的配置项
 		if not rule.opts then rule.opts = {} end
 
+		-- 储存当前规则链
 		chain[#chain + 1] = rule
 
+		-- VAR 通常只有一个元素
 		for i in ipairs(rule.vars) do
 			local var = rule.vars[i]
 			-- 计算规则主键
 			var.collection_key = _build_collection_key(var, rule.opts.transform)
 		end
 
-		-- 计算 offset match
+		-- 规则的动作非 CHAIN, 可能是 [ACCEPT,DENY,DROP,IGNORE]
 		if rule.actions.disrupt ~= "CHAIN" then
-			-- ???
+			-- 计算规则链增加的 step
+			-- 传入参数 [规则链, 总规则数, 规则链起始 index]
 			_write_chain_offsets(chain, max, i - #chain)
 
 			if rule.skip then
+				-- 跳过一组规则
 				_write_skip_offset(rule, max, i)
 			elseif rule.skip_after then
 				local skip_after = rule.skip_after
@@ -131,6 +146,7 @@ function _M.calculate(ruleset, meta_lookup)
 				_write_skip_offset(rule, max, i)
 			end
 
+			-- 跳出当前规则链
 			chain = {}
 		end
 

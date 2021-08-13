@@ -45,6 +45,7 @@ _M.disruptive_lookup = {
 	end,
 }
 
+-- 额外操作类型
 _M.nondisruptive_lookup = {
 	deletevar = function(waf, data, ctx, collections)
 		storage.delete_var(waf, ctx, data)

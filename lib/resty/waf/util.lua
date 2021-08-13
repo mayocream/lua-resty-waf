@@ -223,11 +223,14 @@ function _M.build_rbl_query(ip, rbl_srv)
 end
 
 -- parse collection elements based on a given directive
+-- 解析 KEY {parse} 语句
 _M.parse_collection = {
+	-- 返回特定的 KEY 对应的值
 	specific = function(waf, collection, value)
 		--_LOG_"Parse collection is getting a specific value: " .. value
 		return collection[value]
 	end,
+	-- [实际未使用, 可能废弃]
 	regex = function(waf, collection, value)
 		--_LOG_"Parse collection is geting the regex: " .. value
 		local v
@@ -235,6 +238,7 @@ _M.parse_collection = {
 		local _collection = {}
 		for k, _ in pairs(collection) do
 			--_LOG_"checking " .. k
+			-- 带 jo 优化参数的正则查询
 			if ngx.re.find(k, value, waf._pcre_flags) then
 				v = collection[k]
 				if type(v) == "table" then
@@ -250,14 +254,17 @@ _M.parse_collection = {
 		end
 		return _collection
 	end,
+	-- 返回所有的 KEY, 数组
 	keys = function(waf, collection)
 		--_LOG_"Parse collection is getting the keys"
 		return _M.table_keys(collection)
 	end,
+	-- 返回所有的 Value, 数组
 	values = function(waf, collection)
 		--_LOG_"Parse collection is getting the values"
 		return _M.table_values(collection)
 	end,
+	-- key values 数组，全量，可能会有性能问题
 	all = function(waf, collection)
 		local n = 0
 		local _collection = {}

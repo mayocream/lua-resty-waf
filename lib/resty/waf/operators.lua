@@ -1,10 +1,12 @@
 local _M = {}
 
+-- 引入 cloudflare/lua-aho-corasick 包
 local ac        = require "resty.waf.load_ac"
 local base      = require "resty.waf.base"
 local bit       = require "bit"
 local dns       = require "resty.dns.resolver"
 local iputils   = require "resty.iputils"
+-- SQL 注入和 XSS 检测包
 local libinject = require "resty.libinjection"
 local logger    = require "resty.waf.log"
 local util      = require "resty.waf.util"
@@ -195,7 +197,10 @@ function _M.str_find(waf, subject, pattern)
 	return match, value
 end
 
+-- match 正则匹配
+---@return boolean, string[] 
 function _M.regex(waf, subject, pattern)
+	-- Lua JIT 优化参数
 	local opts = waf._pcre_flags
 	local captures, err, match
 
@@ -222,6 +227,8 @@ function _M.regex(waf, subject, pattern)
 	return match, captures
 end
 
+-- 正则匹配 ngx.re.find, 只返回匹配字符串的 index
+---@return boolean, number
 function _M.refind(waf, subject, pattern)
 	local opts = waf._pcre_flags
 	local from, to, err, match
@@ -249,12 +256,15 @@ function _M.refind(waf, subject, pattern)
 	return match, from
 end
 
+-- AC 自动机字符串查找
+---@return boolean, string
 function _M.ac_lookup(needle, haystack, ctx)
 	local id = ctx.id
 	local match, _ac, value
 
 	-- dictionary creation is expensive, so we use the id of
 	-- the rule as the key to cache the created dictionary
+	-- 使用 Lua Table 缓存字典
 	if not _ac_dicts[id] then
 		_ac = ac.create_ac(haystack)
 		_ac_dicts[id] = _ac
@@ -282,6 +292,9 @@ function _M.ac_lookup(needle, haystack, ctx)
 	return match, value
 end
 
+-- CIDR 匹配
+-- TODO 使用 api7/lua-resty-ipmatcher 库优化
+---@return boolean, string
 function _M.cidr_match(ip, cidr_pattern)
 	local t = {}
 	local n = 1
@@ -308,6 +321,7 @@ function _M.cidr_match(ip, cidr_pattern)
 	return iputils.ip_in_cidrs(ip, t), ip
 end
 
+-- 没有使用到
 function _M.rbl_lookup(waf, ip, rbl_srv, ctx)
 	local nameservers = ctx.nameservers
 
@@ -362,6 +376,7 @@ function _M.rbl_lookup(waf, ip, rbl_srv, ctx)
 	end
 end
 
+-- 没有使用到
 function _M.detect_sqli(input)
 	if type(input) == 'table' then
 		for _, v in ipairs(input) do
@@ -380,6 +395,7 @@ function _M.detect_sqli(input)
 	return false, nil
 end
 
+-- 没有使用到
 function _M.detect_xss(input)
 	if type(input) == 'table' then
 		for _, v in ipairs(input) do
@@ -402,6 +418,7 @@ function _M.detect_xss(input)
 	return false, nil
 end
 
+-- 没有使用到
 function _M.str_match(input, pattern)
 	if type(input) == 'table' then
 		for _, v in ipairs(input) do
@@ -444,6 +461,7 @@ function _M.str_match(input, pattern)
 	return false, nil
 end
 
+-- 没有使用到
 function _M.verify_cc(waf, input, pattern)
 	local match, value
 	match = false
@@ -496,6 +514,9 @@ function _M.verify_cc(waf, input, pattern)
 	return match, value
 end
 
+-- 操作符
+-- 接收参数 [waf 实例, 数据集, 匹配参数]
+---@return boolean, string|number
 _M.lookup = {
 	REGEX        = function(waf, collection, pattern) return _M.regex(waf, collection, pattern) end,
 	REFIND       = function(waf, collection, pattern) return _M.refind(waf, collection, pattern) end,
@@ -508,6 +529,7 @@ _M.lookup = {
 	CONTAINS     = function(waf, collection, pattern) return _M.contains(collection, pattern) end,
 	STR_EXISTS   = function(waf, collection, pattern) return _M.str_find(waf, pattern, collection) end,
 	STR_CONTAINS = function(waf, collection, pattern) return _M.str_find(waf, collection, pattern) end,
+	-- AC 自动机匹配
 	PM           = function(waf, collection, pattern, ctx) return _M.ac_lookup(collection, pattern, ctx) end,
 	CIDR_MATCH   = function(waf, collection, pattern) return _M.cidr_match(collection, pattern) end,
 	RBL_LOOKUP   = function(waf, collection, pattern, ctx) return _M.rbl_lookup(waf, collection, pattern, ctx) end,

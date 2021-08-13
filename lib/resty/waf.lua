@@ -88,6 +88,7 @@ local function _parse_collection(self, collection, var)
 		return collection
 	end
 
+	-- parse 组合
 	local key   = parse[1]
 	local value = parse[2]
 
@@ -179,13 +180,14 @@ local function _rule_action(self, action, ctx, collections)
 	if util.table_has_key(action, actions.alter_actions) then
 		-- 标记为已执行
 		ctx.altered = true
-		-- 设置请求 ID
+		-- 最后执行
 		_finalize(self, ctx)
 	end
 
 	if self._hook_actions[action] then
 		self._hook_actions[action](self, ctx)
 	else
+		-- 执行动作
 		actions.disruptive_lookup[action](self, ctx)
 	end
 end
@@ -194,13 +196,16 @@ end
 local function _do_transform(self, collection, transform)
 	local t = {}
 
+	-- transform 函数可能是数组
 	if type(transform) == "table" then
 		t = collection
 
 		for k, v in ipairs(transform) do
+			-- 对数据集执行转换函数
 			t = _do_transform(self, t, transform[k])
 		end
 	else
+		-- 执行单个转换函数，递归执行
 		-- if the collection is a table, loop through it and add the values to the tmp table
 		-- otherwise, this returns directly to _process_rule or a recursed call from multiple transforms
 		if type(collection) == "table" then
@@ -225,6 +230,7 @@ local function _build_collection(self, rule, var, collections, ctx, opts)
 		return true
 	end
 
+	-- 规则主键
 	local collection_key = var.collection_key
 	local collection
 
@@ -232,12 +238,16 @@ local function _build_collection(self, rule, var, collections, ctx, opts)
 
 	if not var.storage and not ctx.transform_key[collection_key] then
 		--_LOG_"Collection cache miss"
+		-- 获取规则需要的所有数据
+		-- 单个值或者数组
 		collection = _parse_collection(self, collections[var.type], var)
 
+		-- 对数据集进行转换
 		if opts.transform then
 			collection = _do_transform(self, collection, opts.transform)
 		end
 
+		-- Lua table 缓存已转换的数据集
 		ctx.transform[collection_key]     = collection
 		ctx.transform_key[collection_key] = true
 	elseif var.storage then
@@ -262,30 +272,35 @@ local function _build_collection(self, rule, var, collections, ctx, opts)
 end
 
 -- process an individual rule
+-- 处理单条规则
 local function _process_rule(self, rule, collections, ctx)
 	local opts    = rule.opts or {}
 	local pattern = rule.pattern
-	local offset  = rule.offset_nomatch
+	local offset  = rule.offset_nomatch -- ???
 
 	ctx.id = rule.id
 
 	ctx.rule_status = nil
 
+	-- 通常只会有一个变量
 	for k, v in ipairs(rule.vars) do
 		local var
 
 		if self.target_update_map[rule.id] then
 			var = self.target_update_map[rule.id][k]
 		else
+			-- 获取变量
 			var = rule.vars[k]
 		end
 
+		-- 构建数据集
 		local collection = _build_collection(self, rule, var, collections, ctx, opts)
 
 		if not collection then
 			--_LOG_"No values for this collection"
 			offset = rule.offset_nomatch
 		else
+			-- 动态获取要对比的值
 			if opts.parsepattern then
 				--_LOG_"Parsing dynamic pattern: " .. pattern
 				pattern = util.parse_dynamic_value(self, pattern, collections)
@@ -297,9 +312,11 @@ local function _process_rule(self, rule, collections, ctx)
 				match = true
 				value = 1
 			else
+				-- 操作符匹配
 				match, value = operators.lookup[rule.operator](self, collection, pattern, ctx)
 			end
 
+			-- 是否取反
 			if rule.op_negated then
 				match = not match
 			end
@@ -332,6 +349,7 @@ local function _process_rule(self, rule, collections, ctx)
 				end
 				collections.RULE = rule
 
+				-- 执行数据操作, 例如 set_var 等
 				local nondisrupt = rule.actions.nondisrupt or {}
 				for _, action in ipairs(nondisrupt) do
 					actions.nondisruptive_lookup[action.action](self, action.data, ctx, collections)
@@ -343,18 +361,23 @@ local function _process_rule(self, rule, collections, ctx)
 				end
 
 				-- wrapper for the rules action
+				-- 执行动作
 				_rule_action(self, rule.actions.disrupt, ctx, collections)
 
+				-- 设置规则遍历的 offset
+				-- 实际遍历的时候会根据 offset + offset 跳过部分规则
 				offset = rule.offset_match
 
 				break
 			else
+				-- 没有匹配到, offset 设置为预处理后的 nomatch 序号
 				offset = rule.offset_nomatch
 			end
 		end
 	end
 
 	--_LOG_"Returning offset " .. tostring(offset)
+	-- 返回规则遍历增进的 offset
 	return offset
 end
 
@@ -520,10 +543,11 @@ function _M.exec(self, opts)
 	end
 
 	--_LOG_"Beginning run of phase " .. phase
-
+	-- 规则执行
 	for _, ruleset in ipairs(self._active_rulesets) do
 		--_LOG_"Beginning ruleset " .. ruleset
 
+		-- 加载规则集
 		local rs = _ruleset_defs[ruleset]
 
 		if not rs then
@@ -546,10 +570,11 @@ function _M.exec(self, opts)
 		local offset = 1
 		local rule   = rs[phase][offset]
 
+		-- 遍历规则执行, 顺序根据 offset 指定
 		while rule do
 			if not util.table_has_key(rule.id, self._ignore_rule) then
 				--_LOG_"Processing rule " .. rule.id
-
+				-- 执行一条规则, 返回规则增加的步长 (step)
 				local returned_offset = _process_rule(self, rule, collections, ctx)
 				if returned_offset then
 					offset = offset + returned_offset
@@ -558,7 +583,7 @@ function _M.exec(self, opts)
 				end
 			else
 				--_LOG_"Ignoring rule " .. rule.id
-
+				-- 规则被忽略
 				local rule_nomatch = rule.offset_nomatch
 
 				if rule_nomatch then
@@ -570,10 +595,12 @@ function _M.exec(self, opts)
 
 			if not offset then break end
 
+			-- 根据 offset 查找下一条规则
 			rule = rs[phase][offset]
 		end
 	end
 
+	-- 处理规则结果
 	_finalize(self, ctx)
 end
 
@@ -618,7 +645,9 @@ function _M.new()
 		_ignore_ruleset              = {},
 		_mode                        = 'SIMULATE', -- 默认是模拟模式, 只会打印日志
 		_nameservers                 = {},
-		_pcre_flags                  = 'oij',
+		_pcre_flags                  = 'oij', --[[  o 不区分大小写
+													j PCRE JIT 优化
+													i 只编译一次进行缓存 --]]
 		_process_multipart_body      = true,
 		_req_tid_header              = false,
 		_res_body_max_size           = (1024 * 1024), -- 解析 Body 的阈值, 超过这个值不会解析
