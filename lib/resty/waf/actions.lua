@@ -47,14 +47,17 @@ _M.disruptive_lookup = {
 
 -- 额外操作类型
 _M.nondisruptive_lookup = {
+	-- [没有使用到]
 	deletevar = function(waf, data, ctx, collections)
 		storage.delete_var(waf, ctx, data)
 	end,
+	-- [没有使用到]
 	expirevar = function(waf, data, ctx, collections)
 		local time = util.parse_dynamic_value(waf, data.time, collections)
 
 		storage.expire_var(waf, ctx, data, time)
 	end,
+	-- [没有使用到]
 	initcol = function(waf, data, ctx, collections)
 		local col    = data.col
 		local value  = data.value
@@ -66,6 +69,13 @@ _M.nondisruptive_lookup = {
 		ctx.col_lookup[col] = parsed
 		collections[col]    = ctx.storage[parsed]
 	end,
+	-- [频繁使用]
+	--[[ 示例 "data": {
+			"col" : "TX",
+			"inc" : 1,
+			"key" : "anomaly_score",
+			"value" : 2
+		}]]
 	setvar = function(waf, data, ctx, collections)
 		data.key    = util.parse_dynamic_value(waf, data.key, collections)
 		local value = util.parse_dynamic_value(waf, data.value, collections)

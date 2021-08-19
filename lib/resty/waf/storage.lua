@@ -24,7 +24,10 @@ function _M.initialize(waf, storage, col)
 	backend_m.initialize(waf, storage, col)
 end
 
+-- [经常使用]
+-- 设置变量 (威胁 Score)
 function _M.set_var(waf, ctx, element, value)
+	-- 要初始化的 COL 才能使用, 默认 TX 已初始化
 	local col = ctx.col_lookup[string_upper(element.col)]
 	if not col then
 		--_LOG_element.col .. " not initialized"
@@ -35,6 +38,7 @@ function _M.set_var(waf, ctx, element, value)
 	local inc     = element.inc
 	local storage = ctx.storage
 
+	-- 在原来的基础上增加
 	if inc then
 		local existing = storage[col][key]
 

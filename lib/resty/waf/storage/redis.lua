@@ -8,8 +8,10 @@ local storage = require "resty.waf.storage"
 
 _M.version = base.version
 
+-- Redis 储存前缀
 _M.col_prefix = storage.col_prefix
 
+-- storage 用于储存 Redis Hgetall 结果, Lua Table 类型
 function _M.initialize(waf, storage, col)
 	local redis = redis_m:new()
 	local host      = waf._storage_redis_host
@@ -52,6 +54,7 @@ function _M.initialize(waf, storage, col)
 		--_LOG_"Initializing an empty collection for " .. col
 		storage[col] = {}
 	else
+		-- 解析 Redis 返回值
 		local data = redis:array_to_hash(array)
 
 		-- individual redis hash keys cannot be expired, so we remove
@@ -76,6 +79,7 @@ function _M.initialize(waf, storage, col)
 				end
 			end
 
+			-- number 字符串转换成数字
 			-- bah redis and integers :|
 			if(data[key] and ngx.re.find(data[key], [=[^\d+$]=], 'oj')) then
 				data[key] = tonumber(data[key])
