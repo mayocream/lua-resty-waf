@@ -135,6 +135,7 @@ function _M.persist(waf, storage)
 	--_LOG_'Persisting storage type ' .. backend
 
 	for col in pairs(storage) do
+		-- TX 不储存到后端
 		if col ~= 'TX' then
 			--_LOG_'Examining ' .. col
 
